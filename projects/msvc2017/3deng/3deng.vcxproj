@@ -22,6 +22,7 @@
     <ClInclude Include="..\..\..\src\Common.h" />
     <ClInclude Include="..\..\..\src\gfx\MainView.h" />
     <ClInclude Include="..\..\..\src\gfx\SdlHelper.h" />
+    <ClInclude Include="..\..\..\src\gfx\Teapot.h" />
     <ClInclude Include="..\..\..\src\gfx\ViewManager.h" />
   </ItemGroup>
   <ItemGroup>

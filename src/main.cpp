@@ -3,6 +3,10 @@
 
 #include "gfx/ViewManager.h"
 
+
+#include <functional>
+
+
 int main(int argc, char* argv[])
 {
   ui::ViewManager ui;
