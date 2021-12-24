@@ -4,6 +4,7 @@
 #include "ViewManager.h"
 
 #include <vector>
+#include <valarray>
 
 
 #include "glm/ext/matrix_transform.hpp"
@@ -93,7 +94,7 @@ namespace a3d
     const vec3& target() const { return _target; }
 
     const vec2 angle() const { return _angle; }
-    void rotate(const vec2& angle) { _angle = angle; }
+    void rotate(const vec2& angle) { _angle += angle; }
 
     vec3 directionUp() const { return vec3(_transform.inverse() * vec4(0, 1, 0, 0)); }
     vec3 directionRight() const { return vec3(_transform.inverse() * vec4(1, 0, 0, 0)); }
@@ -101,9 +102,8 @@ namespace a3d
 
     mat4 transform() const
     {      
-      //return glm::lookAt(_position, _target, vec3(0.0, -1.0, 0.0));
-      
-      glm::mat4 _transform = glm::mat4(1.0f);
+      //return glm::lookAt(_position, _target, vec3(0.0, -1.0, 0.0));      
+      _transform = glm::mat4(1.0f);
       _transform = glm::rotate(_transform, angle().x, glm::vec3(0, 1, 0));
       _transform = glm::rotate(_transform, angle().y, glm::vec3(1, 0, 0));
       _transform = glm::translate(_transform, -position());
@@ -111,22 +111,15 @@ namespace a3d
     }
   };
 
-  class Mesh
+  class Object
   {
-    std::vector<vec3> _vertices;
+  protected:
     vec3 _position;
     vec3 _rotation;
     vec3 _scale;
 
   public:
-    Mesh() : _position(0, 0, 0), _rotation(0, 0, 0), _scale(1, 1, 1) { }
-
-    void add(const vec3& v) { _vertices.push_back(v); }
-
-    const vec3& operator[](size_t index) const { return _vertices[index]; }
-
-    decltype(_vertices)::const_iterator begin() const { return _vertices.begin(); }
-    decltype(_vertices)::const_iterator end() const { return _vertices.end(); }
+    Object() : _position(0, 0, 0), _rotation(0, 0, 0), _scale(1, 1, 1) { }
 
     const vec3& position() const { return _position; }
 
@@ -135,20 +128,73 @@ namespace a3d
 
     const vec3& scale() const { return _scale; }
     void setScale(const vec3 scale) { _scale = scale; }
+
+    mat4 transform() const
+    {
+      glm::mat4 modelMatrix = mat4(1.0f);
+      modelMatrix = glm::scale(modelMatrix, _scale);
+      modelMatrix = glm::translate(modelMatrix, _position);
+      modelMatrix = glm::rotate(modelMatrix, _rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+      modelMatrix = glm::rotate(modelMatrix, _rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+      modelMatrix = glm::rotate(modelMatrix, _rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+      return modelMatrix;
+    }
   };
 
-  class Quad : public Mesh
+  class Mesh : public Object
   {
+    std::vector<vec3> _vertices;
+
+  public:
+    Mesh() { }
+
+    void add(const vec3& v) { _vertices.push_back(v); }
+
+    const vec3& operator[](size_t index) const { return _vertices[index]; }
+
+    decltype(_vertices)::const_iterator begin() const { return _vertices.begin(); }
+    decltype(_vertices)::const_iterator end() const { return _vertices.end(); }
+  };
+
+  class Quad : public Object
+  {
+  private:
+    std::array<vec3, 4> vertices;
+    std::array<vec2, 4> textureCoords;
+    
+    std::array<std::array<size_t, 3>, 2> indices = { { { 0, 1, 2 }, { 1, 2, 3 } } };
+
   public:
     Quad() = default;
+
     Quad(vec3 v, float w, float h)
     {
-      add(v);
-      add(vec3(v.x + w, v.y,     v.z));
-      add(vec3(v.x + w, v.y + h, v.z));
-      add(vec3(v.x,     v.y + h, v.z));
+      vertices = { 
+        v,
+        vec3(v.x + w, v.y,     v.z),
+        vec3(v.x,     v.y + h, v.z),
+        vec3(v.x + w, v.y + h, v.z)
+      };
 
+      textureCoords = {
+  vec2(0.0f, 0.0f),
+  vec2(64.0f / 384, 0.0f),
+  vec2(0.0f, 1.0f / 20),
+  vec2(64.0f / 384, 1.0f / 20)
+      };
+
+      /*textureCoords = {
+        vec2(0.0f, 0.0f),
+        vec2(1.0f, 0.0f),
+        vec2(0.0f, 1.0f),
+        vec2(1.0f, 1.0f)
+      };*/
     }
+
+    const auto& triangle(size_t i) const { return indices[i]; }
+
+    const auto& vertex(size_t i) const { return vertices[i]; }
+    const auto& textureCoord(size_t i) const { return textureCoords[i]; }
   };
 }
 
@@ -168,13 +214,39 @@ namespace a3d
       {
         for (size_t x = 0; x < _width; ++x)
         {
-          auto cy = y / 8, cx = x / 8;
+          auto cy = y / 16, cx = x / 16;
 
           bool dark = (cx % 2 == 1 && cy % 2 == 0) || (cx % 2 == 0 && cy % 2 == 1);
 
           get(x, y) = dark ? color_t{ 120, 120, 120, 255 } : color_t{220, 220, 220, 255};
         }
       }
+    }
+
+    Texture(const path& path)
+    {
+      SDL_Surface* osurface = IMG_Load("textures.png");
+      
+      _width = osurface->w;
+      _height = osurface->h;
+      _data.resize(_width * _height);
+
+      auto* format = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
+      auto* surface = SDL_ConvertSurface(osurface, format, 0);
+
+      SDL_FreeSurface(osurface);
+      SDL_FreeFormat(format);
+
+      for (size_t y = 0; y < _height; ++y)
+      {
+        for (size_t x = 0; x < _width; ++x)
+        {
+          auto& color = get(x, y);
+          SDL_GetRGBA(static_cast<uint32_t*>(surface->pixels)[x + y*_width], surface->format, &color.r, &color.g, &color.b, &color.a);
+        }
+      }
+
+      SDL_FreeSurface(surface);
     }
 
     color_t& get(int32_t x, int32_t y)
@@ -301,7 +373,7 @@ namespace a3d
 
         float z = 1 / (bc.lambdas[0] * (1 / triangle[0].z) + bc.lambdas[1] * (1 / triangle[1].z) + bc.lambdas[2] * (1 / triangle[2].z));
 
-        return z * attribute[0] * bc.lambdas[0] + z * attribute[1] * bc.lambdas[1] + z * attribute[2] * bc.lambdas[2];
+        return z * (attribute[0] * bc.lambdas[0] + attribute[1] * bc.lambdas[1] + attribute[2] * bc.lambdas[2]);
       }
 
     };
@@ -313,18 +385,21 @@ namespace a3d
 
 using namespace a3d;
 
-Mesh cube;
 Camera camera;
 
-Texture texture = Texture(128, 128);
+Texture texture = Texture("textures.png");//Texture(128, 128);
 
 rasterize::Rasterizer rasterizer;
+
+std::vector<Quad> quads;
 
 MainView::MainView(ViewManager* gvm) : gvm(gvm)
 {
   mouse = { -1, -1 };
 
-  cube = Quad(vec3(-1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
+  quads.emplace_back(vec3(-1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
+  //quads.emplace_back(vec3(-1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
+
 
   for (int i = 0; i < teapot_count; i += 3)
   {
@@ -341,9 +416,8 @@ MainView::MainView(ViewManager* gvm) : gvm(gvm)
   cube.add(vec3( 1,  1, -1));
   cube.add(vec3( 1, -1, -1));*/
 
-  cube.setScale(vec3(1.0f));
-
-  cube.setRotation(vec3(1.6f, 0.0f, 0.0f));
+  //cube.setScale(vec3(1.0f));
+  //cube.setRotation(vec3(0.0f, 0.0f, 0.0f));
 
   camera.setPosition(vec3(0, 0, 5.0f));
   camera.setTarget(vec3(0, 0, 0.0f));
@@ -359,85 +433,41 @@ void MainView::render()
 
   glm::mat4 viewMatrix = camera.transform();
 
-  glm::mat4 projectionMatrix = glm::perspective(glm::radians(60.0f), float(WIDTH) / float(HEIGHT), 0.01f, 1.0f);
+  glm::mat4 projectionMatrix = glm::perspective(glm::radians(60.0f), float(WIDTH) / float(HEIGHT), 0.01f, 100.0f);
 
+
+  for (const auto& quad : quads)
   {
-    glm::mat4 modelMatrix = mat4(1.0f);
-    modelMatrix = glm::scale(modelMatrix, cube.scale());
-    modelMatrix = glm::translate(modelMatrix, /*cube.position()*/ vec3(-2.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().x, glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().y, glm::vec3(0.0f, 1.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().z, glm::vec3(0.0f, 0.0f, 1.0f));
+    for (size_t i = 0; i <= 1; ++i)
+    {
+      glm::mat4 transformMatrix = projectionMatrix * viewMatrix * quad.transform();
 
+      const auto& indices = quad.triangle(i);
+      std::array<vec3, 3> vertices = { quad.vertex(indices[0]), quad.vertex(indices[1]), quad.vertex(indices[2]) };
+      std::array<vec2, 3> textureCoords = { quad.textureCoord(indices[0]), quad.textureCoord(indices[1]), quad.textureCoord(indices[2]) };
+      std::for_each(vertices.begin(), vertices.end(), [&transformMatrix](vec3& v) {
+        vec4 tv = transformMatrix * vec4(v, 1.0f);
+        v = vec3(tv.x / tv.w, tv.y / tv.w, tv.z);
+        });
 
-    glm::mat4 transformMatrix = projectionMatrix * viewMatrix * modelMatrix;
-    
-    std::array<vec3, 3> vertices = { cube[0], cube[1], cube[2] };
-    
-    std::for_each(vertices.begin(), vertices.end(), [&transformMatrix](vec3& v) {
-      vec4 tv = transformMatrix * vec4(v, 1.0f);
-      tv /= tv.w;
-      v = tv.xyz();
-    });
-    
-    std::array<vec3, 3> vertexColors = { vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f) };
-    std::array<vec2, 3> textureCoord = { vec2(0.0f, 0.0f), vec2(1.0f, 0.0f), vec2(1.0f, 1.0f) };
+      std::array<vec3, 3> vertexColors = { vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f) };
 
-    auto triangle = rasterizer.projectRectangle(vertices);
-    
-    for (size_t x = 0; x < WIDTH; ++ x)
-      for (size_t y = 0; y < HEIGHT; ++y)
-      {
-        if (math::intersections::is2dPointInsideTriangle(vec2(x, y), triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]))
+      auto triangle = rasterizer.projectRectangle(vertices);
+
+      for (size_t x = 0; x < WIDTH; ++x)
+        for (size_t y = 0; y < HEIGHT; ++y)
         {
-          //vec3 color = rasterizer.computeCorrectedVertexAttribute(triangle, vertexColors, vec2(x, y));
-          //gvm->fillRect(x, y, 1, 1, { (u8)(color.r * 255), (u8)(color.g * 255), (u8)(color.b * 255) });
+          if (math::intersections::is2dPointInsideTriangle(vec2(x, y), triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]))
+          {
+            //vec3 color = rasterizer.computeCorrectedVertexAttribute(triangle, vertexColors, vec2(x, y));
+            //gvm->fillRect(x, y, 1, 1, { (u8)(color.r * 255), (u8)(color.g * 255), (u8)(color.b * 255) });
 
-          vec2 tx = rasterizer.computeCorrectedVertexAttribute(triangle, textureCoord, vec2(x, y));
-          gvm->fillRect(x, y, 1, 1, texture.get(tx));
+            vec2 tx = rasterizer.computeCorrectedVertexAttribute(triangle, textureCoords, vec2(x, y));
+            gvm->fillRect(x, y, 1, 1, texture.get(tx));
+          }
         }
-      }
+    }
   }
-
-  {
-    glm::mat4 modelMatrix = mat4(1.0f);
-    modelMatrix = glm::scale(modelMatrix, cube.scale());
-    modelMatrix = glm::translate(modelMatrix, /*cube.position()*/ vec3(2.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().x, glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().y + 3.1415f, glm::vec3(0.0f, 1.0f, 0.0f));
-    modelMatrix = glm::rotate(modelMatrix, cube.rotation().z, glm::vec3(0.0f, 0.0f, 1.0f));
-
-    glm::mat4 transformMatrix = projectionMatrix * viewMatrix * modelMatrix;
-
-    std::array<vec3, 3> vertices = { cube[0], cube[1], cube[2] };
-
-    std::for_each(vertices.begin(), vertices.end(), [&transformMatrix](vec3& v) {
-      vec4 tv = transformMatrix * vec4(v, 1.0f);
-      tv /= tv.w;
-      v = tv.xyz();
-      });
-
-    std::array<vec3, 3> vertexColors = { vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f) };
-    std::array<vec2, 3> textureCoord = { vec2(0.0f, 0.0f), vec2(1.0f, 0.0f), vec2(1.0f, 1.0f) };
-
-
-    auto triangle = rasterizer.projectRectangle(vertices);
-
-    for (size_t x = 0; x < WIDTH; ++x)
-      for (size_t y = 0; y < HEIGHT; ++y)
-      {
-        if (math::intersections::is2dPointInsideTriangle(vec2(x, y), triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]))
-        {
-          //vec3 color = rasterizer.computeVertexAttribute(triangle, vertexColors, vec2(x, y));
-          //gvm->fillRect(x, y, 1, 1, { (u8)(color.r * 255), (u8)(color.g * 255), (u8)(color.b * 255) });
-
-          vec2 tx = rasterizer.computeVertexAttribute(triangle, textureCoord, vec2(x, y));
-          gvm->fillRect(x, y, 1, 1, texture.get(tx));
-        }
-      }
-  }
-
-
 
   /*for (const auto& vertex : cube)
   {
@@ -452,15 +482,23 @@ void MainView::render()
   }*/
 
   if (keymap[SDL_SCANCODE_DOWN])
-    camera.setPosition(camera.position() + vec3(0, 0, 1)*0.05f);
+    camera.setPosition(camera.position() + vec3(0, 0, 1) * 0.05f);
   else if (keymap[SDL_SCANCODE_UP])
-    camera.setPosition(camera.position() + vec3(0, 0, 1)*-0.05f);
+    camera.setPosition(camera.position() + vec3(0, 0, 1) * -0.05f);
   else if (keymap[SDL_SCANCODE_A])
-    camera.setPosition(camera.position() + vec3(1, 0, 0) * -0.05f);
+    camera.setPosition(camera.position() + camera.directionRight() * -0.05f);
   else if (keymap[SDL_SCANCODE_D])
-    camera.setPosition(camera.position() + vec3(1, 0, 0) * +0.05f);
-
-  cube.setRotation(cube.rotation() + vec3(0.01f, 0.0f, 0.0f));
+    camera.setPosition(camera.position() + camera.directionRight() * +0.05f);
+  else if (keymap[SDL_SCANCODE_W])
+    camera.setPosition(camera.position() + camera.directionForward() * +0.05f);
+  else if (keymap[SDL_SCANCODE_S])
+    camera.setPosition(camera.position() + camera.directionForward() * -0.05f);
+  
+  if (keymap[SDL_SCANCODE_Q])
+    camera.rotate(vec2(-0.05f, 0.0f));
+  else if (keymap[SDL_SCANCODE_E])
+    camera.rotate(vec2(+0.05f, 0.0f));
+  //quads[0].setRotation(quads[0].rotation() + vec3(0.01f, 0.01f, 0.0f));
 }
 
 void MainView::handleKeyboardEvent(const SDL_Event& event)
