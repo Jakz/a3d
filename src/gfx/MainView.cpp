@@ -167,6 +167,16 @@ namespace a3d
   public:
     Quad() = default;
 
+    Quad(vec3&& v1, vec3&& v2, vec3&& v3, vec3&& v4) : vertices({ { v1, v2, v3, v4} })
+    {
+      textureCoords = {
+        vec2(0.0f, 0.0f),
+        vec2(64.0f / 384, 0.0f),
+        vec2(0.0f, 1.0f / 19),
+        vec2(64.0f / 384, 1.0f / 19)
+      };
+    }
+
     Quad(vec3 v, float w, float h)
     {
       vertices = { 
@@ -177,10 +187,10 @@ namespace a3d
       };
 
       textureCoords = {
-  vec2(0.0f, 0.0f),
-  vec2(64.0f / 384, 0.0f),
-  vec2(0.0f, 1.0f / 20),
-  vec2(64.0f / 384, 1.0f / 20)
+        vec2(0.0f, 1.0f / 20),
+        vec2(64.0f / 384, 1.0f / 20),
+        vec2(0.0f, 0.0f),
+        vec2(64.0f / 384, 0.0f)
       };
 
       /*textureCoords = {
@@ -189,6 +199,11 @@ namespace a3d
         vec2(0.0f, 1.0f),
         vec2(1.0f, 1.0f)
       };*/
+    }
+
+    void setTextureCoords(vec2&& tl, vec2&& tr, vec2&& br, vec2&& bl)
+    {
+      textureCoords = { bl, br, tl, tr };
     }
 
     const auto& triangle(size_t i) const { return indices[i]; }
@@ -200,15 +215,41 @@ namespace a3d
 
 namespace a3d
 {
-  class Texture
+  
+  template<typename T>
+  class Buffer2D
   {
-  private:
+  protected:
     size_t _width;
     size_t _height;
-    std::vector<color_t> _data;
+    std::vector<T> _data;
     
   public:
-    Texture(size_t width, size_t height) : _width(width), _height(height), _data(width* height)
+    Buffer2D(size_t width, size_t height) : _width(width), _height(height), _data(width* height) { }
+    Buffer2D(size_t width, size_t height, T value) : _width(width), _height(height), _data(width* height, value) { }
+
+    
+    T& get(int32_t x, int32_t y)
+    {
+      return x >= 0 && x < _width && y >= 0 && y < _height ? _data[y * _width + x] : _data[0];
+    }
+
+    T& get(const vec2& coords)
+    {
+      int32_t x = coords.x * _width;
+      int32_t y = coords.y * _height;
+      return get(x, y);
+    }
+
+    size_t width() const { return _width; }
+    size_t height() const { return _height; }
+  };
+
+  class Texture : public Buffer2D<color_t>
+  {
+
+  public:
+    Texture(size_t width, size_t height) : Buffer2D(width, height)
     {
       for (size_t y = 0; y < _height; ++y)
       {
@@ -218,15 +259,15 @@ namespace a3d
 
           bool dark = (cx % 2 == 1 && cy % 2 == 0) || (cx % 2 == 0 && cy % 2 == 1);
 
-          get(x, y) = dark ? color_t{ 120, 120, 120, 255 } : color_t{220, 220, 220, 255};
+          get(x, y) = dark ? color_t{ 120, 120, 120, 255 } : color_t{ 220, 220, 220, 255 };
         }
       }
     }
 
-    Texture(const path& path)
+    Texture(const path& path) : Buffer2D(0, 0)
     {
       SDL_Surface* osurface = IMG_Load("textures.png");
-      
+
       _width = osurface->w;
       _height = osurface->h;
       _data.resize(_width * _height);
@@ -242,27 +283,12 @@ namespace a3d
         for (size_t x = 0; x < _width; ++x)
         {
           auto& color = get(x, y);
-          SDL_GetRGBA(static_cast<uint32_t*>(surface->pixels)[x + y*_width], surface->format, &color.r, &color.g, &color.b, &color.a);
+          SDL_GetRGBA(static_cast<uint32_t*>(surface->pixels)[x + y * _width], surface->format, &color.r, &color.g, &color.b, &color.a);
         }
       }
 
       SDL_FreeSurface(surface);
     }
-
-    color_t& get(int32_t x, int32_t y)
-    {
-      return x >= 0 && x < _width && y >= 0 && y < _height ? _data[y * _width + x] : _data[0];
-    }
-
-    color_t& get(const vec2& coords)
-    {
-      int32_t x = coords.x * _width;
-      int32_t y = coords.y * _height;
-      return get(x, y);
-    }
-
-    size_t width() const { return _width; }
-    size_t height() const { return _height; }
   };
 }
 
@@ -398,6 +424,11 @@ MainView::MainView(ViewManager* gvm) : gvm(gvm)
   mouse = { -1, -1 };
 
   quads.emplace_back(vec3(-1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
+  quads.emplace_back(vec3(1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
+  quads.emplace_back(vec3(-1.0f, -1.0f, -2.0f), vec3(-1.0f, -1.0f, 0.0f), vec3(-1.0f, 1.0f, -2.0f), vec3(-1.0f, 1.0f, 0.0f));
+
+  quads[0].setTextureCoords(vec2(0.0f, 1.0f / 19), vec2(1.0f / 6, 1.0f / 19), vec2(1.0f / 6, 2.0f / 19), vec2(0.0f, 2.0f / 19));
+
   //quads.emplace_back(vec3(-1.0f, -1.0f, 0.0f), 2.0f, 2.0f);
 
 
@@ -419,7 +450,7 @@ MainView::MainView(ViewManager* gvm) : gvm(gvm)
   //cube.setScale(vec3(1.0f));
   //cube.setRotation(vec3(0.0f, 0.0f, 0.0f));
 
-  camera.setPosition(vec3(0, 0, 5.0f));
+  camera.setPosition(vec3(0, 0, -5.0f));
   camera.setTarget(vec3(0, 0, 0.0f));
 
   std::fill(keymap, keymap + 256, false);
@@ -436,6 +467,10 @@ void MainView::render()
   glm::mat4 projectionMatrix = glm::perspective(glm::radians(60.0f), float(WIDTH) / float(HEIGHT), 0.01f, 100.0f);
 
 
+  Buffer2D<float> depthBuffer(WIDTH, HEIGHT, std::numeric_limits<float>::lowest());
+  SDL_Surface* frameBuffer = SDL_CreateRGBSurfaceWithFormat(0, WIDTH, HEIGHT, 32, SDL_PIXELFORMAT_RGBA8888);
+  SDL_Texture* frameBufferTexture = SDL_CreateTextureFromSurface(gvm->renderer(), frameBuffer);
+
   for (const auto& quad : quads)
   {
     for (size_t i = 0; i <= 1; ++i)
@@ -450,6 +485,8 @@ void MainView::render()
         v = vec3(tv.x / tv.w, tv.y / tv.w, tv.z);
         });
 
+      std::array<float, 3> zeds = { vertices[0].z, vertices[1].z, vertices[2].z };
+
       std::array<vec3, 3> vertexColors = { vec3(1.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f), vec3(0.0f, 0.0f, 1.0f) };
 
       auto triangle = rasterizer.projectRectangle(vertices);
@@ -459,15 +496,26 @@ void MainView::render()
         {
           if (math::intersections::is2dPointInsideTriangle(vec2(x, y), triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]))
           {
-            //vec3 color = rasterizer.computeCorrectedVertexAttribute(triangle, vertexColors, vec2(x, y));
-            //gvm->fillRect(x, y, 1, 1, { (u8)(color.r * 255), (u8)(color.g * 255), (u8)(color.b * 255) });
+            float z = rasterizer.computeCorrectedVertexAttribute(triangle, zeds, vec2(x, y));
 
-            vec2 tx = rasterizer.computeCorrectedVertexAttribute(triangle, textureCoords, vec2(x, y));
-            gvm->fillRect(x, y, 1, 1, texture.get(tx));
+            if (z > depthBuffer.get(x, y))
+            {
+              vec2 tx = rasterizer.computeCorrectedVertexAttribute(triangle, textureCoords, vec2(x, y));
+              
+              static_cast<uint32_t*>(frameBuffer->pixels)[x + frameBuffer->w * y] = *(uint32_t*)&texture.get(tx);
+
+              
+              //gvm->point(x, y, texture.get(tx));
+
+              depthBuffer.get(x, y) = z;
+            }
           }
         }
     }
   }
+
+  SDL_UpdateTexture(frameBufferTexture, nullptr, frameBuffer->pixels, frameBuffer->pitch);
+  gvm->blit(frameBufferTexture, 0, 0);
 
   /*for (const auto& vertex : cube)
   {
@@ -486,13 +534,13 @@ void MainView::render()
   else if (keymap[SDL_SCANCODE_UP])
     camera.setPosition(camera.position() + vec3(0, 0, 1) * -0.05f);
   else if (keymap[SDL_SCANCODE_A])
-    camera.setPosition(camera.position() + camera.directionRight() * -0.05f);
-  else if (keymap[SDL_SCANCODE_D])
     camera.setPosition(camera.position() + camera.directionRight() * +0.05f);
+  else if (keymap[SDL_SCANCODE_D])
+    camera.setPosition(camera.position() + camera.directionRight() * -0.05f);
   else if (keymap[SDL_SCANCODE_W])
-    camera.setPosition(camera.position() + camera.directionForward() * +0.05f);
-  else if (keymap[SDL_SCANCODE_S])
     camera.setPosition(camera.position() + camera.directionForward() * -0.05f);
+  else if (keymap[SDL_SCANCODE_S])
+    camera.setPosition(camera.position() + camera.directionForward() * +0.05f);
   
   if (keymap[SDL_SCANCODE_Q])
     camera.rotate(vec2(-0.05f, 0.0f));

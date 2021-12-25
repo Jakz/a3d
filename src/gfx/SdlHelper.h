@@ -71,6 +71,7 @@ public:
   void drawRect(int x, int y, int w, int h, color_t color);
   void fillRect(int x, int y, int w, int h, color_t color);
   void line(int x1, int y1, int x2, int y2, color_t color);
+  void point(int x, int y, color_t color);
   void clear(color_t color);
 
   void toggleMouseCursor(bool visible);
@@ -249,6 +250,13 @@ inline void SDL<EventHandler, Renderer>::fillRect(int x, int y, int w, int h, co
   SDL_SetRenderDrawColor(_renderer, color.r, color.g, color.b, color.a);
   SDL_Rect rect = { x, y, w, h };
   SDL_RenderFillRect(_renderer, &rect);
+}
+
+template<typename EventHandler, typename Renderer>
+inline void SDL<EventHandler, Renderer>::point(int x, int y, color_t color)
+{
+  SDL_SetRenderDrawColor(_renderer, color.r, color.g, color.b, color.a);
+  SDL_RenderDrawPoint(_renderer, x, y);
 }
 
 template<typename EventHandler, typename Renderer>

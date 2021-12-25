@@ -74,7 +74,7 @@ struct size2d_t
 
 struct color_t
 {
-  u8 r, g, b, a;
+  u8 b, g, r, a;
 };
 
 using path = std::string;
